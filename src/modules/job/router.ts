@@ -2,7 +2,6 @@ import { Hono } from "hono";
 import { db } from "../../utils/db";
 import { zValidator } from "@hono/zod-validator";
 import { CreateJobSchema } from "./schema";
-import { queue } from "../../worker/queue";
 
 export const jobRouter = new Hono()
   .get("/", async (c) => {
@@ -36,12 +35,24 @@ export const jobRouter = new Hono()
     }
   }), async (c) => {
     const body = c.req.valid("json");
-    const newJob = await db.orm.public.Job.create({
-      diet: body.diet,
-      budget: body.budget,
-      status: "PENDING"
-    })
 
-    await queue.add("generate-meal-plan", newJob);
+    // Save the job and queue message together so accepted jobs are not lost.
+    const newJob = await db.transaction(async (tx) => {
+      const job = await tx.orm.public.Job.create({
+        diet: body.diet,
+        budget: body.budget,
+        status: "PENDING"
+      });
+
+      await tx.orm.public.OutboxMessage.create({
+        jobId: job.id,
+        type: "generate-meal-plan",
+        payload: JSON.stringify({ id: job.id }),
+        status: "PENDING",
+      });
+
+      return job;
+    });
+
     return c.json({ job: newJob }, 202);
   })

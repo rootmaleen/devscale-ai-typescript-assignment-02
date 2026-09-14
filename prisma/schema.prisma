@@ -6,6 +6,7 @@ model Job {
   createdAt DateTime @default(now())
 
   results JobResult[]
+  outboxMessages OutboxMessage[]
 }
 
 model JobResult {
@@ -15,5 +16,15 @@ model JobResult {
   ingredients String
   instructions String
   jobId String
+  job Job @relation(fields: [jobId], references: [id], onDelete: Cascade)
+}
+
+model OutboxMessage {
+  id String @id @default(uuid())
+  jobId String
+  type String
+  payload String
+  status String
+  createdAt DateTime @default(now())
   job Job @relation(fields: [jobId], references: [id], onDelete: Cascade)
 }

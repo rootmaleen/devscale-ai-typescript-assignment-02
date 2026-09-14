@@ -2,6 +2,13 @@ import { Worker } from "bullmq";
 import { QUEUE_NAME, workerConnection } from "./config";
 import { db } from "../utils/db";
 import { generateMealPlan } from "../modules/job/service";
+import { publishOutboxMessages } from "./outbox";
+
+// Publish pending outbox messages now and retry every five seconds.
+void publishOutboxMessages();
+setInterval(() => {
+  void publishOutboxMessages();
+}, 5000);
 
 export const worker = new Worker(
   QUEUE_NAME,
