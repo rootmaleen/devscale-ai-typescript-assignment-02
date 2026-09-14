@@ -5,11 +5,30 @@ import { CreateJobSchema } from "./schema";
 
 export const jobRouter = new Hono()
   .get("/", async (c) => {
-    // /jobs -> return all jobs
-    // app -> ORM -> db
-    const jobs = await db.orm.public.Job.all();
+    // Use a small default page and allow clients to request a different range.
+    const { limit: limitParam, offset: offsetParam } = c.req.query();
+    const limit = limitParam === undefined ? 10 : Number(limitParam);
+    const offset = offsetParam === undefined ? 0 : Number(offsetParam);
 
-    return c.json({ message: jobs });
+    if (!Number.isInteger(limit) || limit < 1 || limit > 100 || !Number.isInteger(offset) || offset < 0) {
+      return c.json({
+        message: "Invalid pagination parameters",
+        errors: {
+          limit: "Limit must be an integer between 1 and 100",
+          offset: "Offset must be a non-negative integer",
+        },
+      }, 400);
+    }
+
+    const jobs = await db.orm.public.Job
+      .limit(limit)
+      .offset(offset)
+      .all();
+
+    return c.json({
+      message: jobs,
+      pagination: { limit, offset },
+    });
   }).get("/:id", async (c) => {
     const { id } = c.req.param();
 
