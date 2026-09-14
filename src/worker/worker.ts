@@ -35,12 +35,15 @@ export const worker = new Worker(
         ...meal
       }));
 
-      await db.orm.public.JobResult
-        .where((result) => result.jobId.eq(jobId))
-        .delete();
-      await db.orm.public.JobResult.createAll(mealsWithId);
-      await db.orm.public.Job.where((job) => job.id.eq(jobId)).update({
-        status: "COMPLETED",
+      // Replace results and complete the job together, or roll back everything.
+      await db.transaction(async (tx) => {
+        await tx.orm.public.JobResult
+          .where((result) => result.jobId.eq(jobId))
+          .delete();
+        await tx.orm.public.JobResult.createAll(mealsWithId);
+        await tx.orm.public.Job.where((job) => job.id.eq(jobId)).update({
+          status: "COMPLETED",
+        });
       });
     } catch (error) {
       await db.orm.public.Job.where((job) => job.id.eq(jobId)).update({

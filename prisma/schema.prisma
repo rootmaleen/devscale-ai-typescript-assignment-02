@@ -4,6 +4,8 @@ model Job {
   budget String
   status String
   createdAt DateTime @default(now())
+
+  results JobResult[]
 }
 
 model JobResult {
@@ -12,5 +14,6 @@ model JobResult {
   description String
   ingredients String
   instructions String
-  jobId String 
+  jobId String
+  job Job @relation(fields: [jobId], references: [id], onDelete: Cascade)
 }
