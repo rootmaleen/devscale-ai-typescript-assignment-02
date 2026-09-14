@@ -6,7 +6,9 @@
     "worker:dev": "tsx watch src/worker/worker.ts",
     "build": "tsc",
     "start": "node dist/index.js",
-    "contract:emit": "prisma contract emit"
+    "contract:emit": "prisma contract emit",
+    "db:init": "pnpm run contract:emit && pnpm exec prisma db init && pnpm exec prisma db verify",
+    "db:update": "pnpm run contract:emit && pnpm exec prisma db update --dry-run && pnpm exec prisma db update"
   },
   "dependencies": {
     "@anvia/core": "^1.2.2",

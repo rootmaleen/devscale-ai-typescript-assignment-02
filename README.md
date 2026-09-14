@@ -1,17 +1,13 @@
+# Assignment 02
+
+- Nama : Alin M
+- Program : AI Product Engineering with Typescript
+- Batch : 2
+- Assignment Number : 2
+
 # Hono + Prisma + BullMQ
 
-A teaching project for the **Devscale AI Product Engineering program**. Build an asynchronous meal-planning API with Hono, PostgreSQL, Prisma Next, Redis, and BullMQ.
-
-A client submits a dietary preference and budget. The API saves the request and returns immediately; a separate worker calls an AI model and stores the meal suggestions for the client to retrieve later.
-
-## What you will learn
-
-- Create HTTP routes with Hono and validate request bodies with Zod.
-- Define database models and query PostgreSQL through Prisma Next.
-- Separate HTTP request handling from slow AI work using BullMQ.
-- Run an API and a worker as separate processes connected through Redis.
-- Generate structured AI output and persist it in the database.
-- Understand the difference between accepting a job and completing it.
+This is an asynchronous meal-planning API with Hono, PostgreSQL, Prisma Next, Redis, and BullMQ. A client submits a dietary preference and budget, the API saves the request and returns immediately, and a separate worker calls an AI model and stores the meal suggestions for the client to retrieve later.
 
 ## Request flow
 
@@ -20,8 +16,9 @@ Client                         API                         Worker
   |                             |                             |
   |-- POST /jobs --------------->|                             |
   |                             |-- Save PENDING job in PostgreSQL
-  |                             |-- Enqueue job in Redis ---->|
+  |                             |-- Save outbox message ------>|
   |<-- 202 Accepted + job ID ----|                             |
+  |                             |                    Publish outbox message to Redis
   |                             |                    Load job from PostgreSQL
   |                             |                    Generate AI suggestions
   |                             |                    Save JobResult records
@@ -54,8 +51,7 @@ This repository uses **Prisma Next prerelease packages** and the contract-based 
 You need Node.js **22.18 or newer**, pnpm (this project was inspected with `11.22.0`), Docker with Docker Compose, and an API key for an OpenAI-compatible provider.
 
 ```bash
-git clone git@github.com:Devscale-Indonesia/hono-prisma-bullmq.git
-cd hono-prisma-bullmq
+# Run these commands from the project root.
 pnpm install --frozen-lockfile
 cp .env.example .env
 ```
@@ -94,9 +90,7 @@ The API and worker run on your host machine. Docker Compose starts only the data
 ### 4. Generate the contract and initialize the database
 
 ```bash
-pnpm contract:emit
-pnpm exec prisma db init
-pnpm exec prisma db verify
+pnpm db:init
 ```
 
 The schema lives in [`prisma/schema.prisma`](prisma/schema.prisma). Contract generation writes the runtime metadata and TypeScript types to `src/generated/prisma/`, as configured in `prisma.config.ts`. Database initialization creates the missing schema structures and signs the database with the contract.
@@ -104,9 +98,7 @@ The schema lives in [`prisma/schema.prisma`](prisma/schema.prisma). Contract gen
 After editing the schema during a lesson:
 
 ```bash
-pnpm contract:emit
-pnpm exec prisma db update --dry-run
-pnpm exec prisma db update
+pnpm db:update
 ```
 
 Review the preview before applying schema changes to a database containing data you want to keep.
@@ -134,7 +126,7 @@ The API listens at `http://localhost:3000`. Try `/jobs`; there is no route at `/
 ```bash
 curl -i -X POST http://localhost:3000/jobs \
   -H 'Content-Type: application/json' \
-  -d '{"diet":"makanan indonesia untuk bulking","budget":"Rp 300.000 per minggu"}'
+  -d '{"diet":"makanan indonesia untuk penderita diabetes","budget":"Rp 300.000 per minggu"}'
 ```
 
 A successful request returns **202 Accepted** with a `job` object containing `id`, `diet`, `budget`, `status: "PENDING"`, and `createdAt`. Copy the job ID for the next request.
@@ -144,10 +136,12 @@ Both input fields must be non-empty strings of at most 255 characters. Include a
 ### List jobs and check status
 
 ```bash
-curl http://localhost:3000/jobs
+curl "http://localhost:3000/jobs?limit=10&offset=0"
 ```
 
-Response shape: `{ "jobs": [...] }`. A successfully processed job changes from `PENDING` to `COMPLETED`.
+`limit` controls the number of jobs returned, from 1 to 100. `offset` controls how many jobs to skip. Both default to `10` and `0` respectively. Invalid pagination values return `400`.
+
+Response shape: `{ "message": [...], "pagination": { "limit": 10, "offset": 0 } }`. Jobs move from `PENDING` to `PROCESSING`, then to `COMPLETED` or `FAILED`.
 
 ### Retrieve generated suggestions
 
@@ -186,12 +180,13 @@ The prompt asks for five meals, although the output schema does not enforce an e
 | [`src/worker/queue.ts`](src/worker/queue.ts) | Queue producer |
 | [`src/worker/config.ts`](src/worker/config.ts) | Shared queue name and Redis connection |
 | [`src/worker/worker.ts`](src/worker/worker.ts) | Job processing, result persistence, and status update |
+| [`src/worker/outbox.ts`](src/worker/outbox.ts) | Publishing durable outbox messages to Redis |
 | [`src/modules/job/service.ts`](src/modules/job/service.ts) | AI prompt and structured output schema |
 | [`src/llm/models.ts`](src/llm/models.ts) | Provider credentials, base URL, and model selection |
 | [`src/utils/db.ts`](src/utils/db.ts) | Database client used by the application |
 | [`prisma/schema.prisma`](prisma/schema.prisma) | `Job` and `JobResult` models |
 
-`Job` stores the diet, budget, and status. `JobResult` stores each meal with a `jobId` string. The schema does not currently declare a relation or foreign key between these models.
+`Job` stores the diet, budget, and status. `JobResult` stores each meal and belongs to a `Job` through a foreign key. `OutboxMessage` stores pending queue messages so accepted jobs are not lost if Redis is temporarily unavailable.
 
 ## Commands
 
@@ -200,6 +195,8 @@ The prompt asks for five meals, although the output schema does not enforce an e
 | `pnpm dev` | Run the API with file watching |
 | `pnpm worker:dev` | Run the worker with file watching |
 | `pnpm contract:emit` | Regenerate the Prisma data contract |
+| `pnpm db:init` | Generate the contract and initialize/verify the database |
+| `pnpm db:update` | Generate the contract and apply a schema update |
 | `pnpm exec prisma db verify` | Check the database against the contract |
 | `pnpm exec tsc --noEmit` | Check TypeScript without emitting files |
 | `pnpm build` | Attempt TypeScript compilation; see limitation below |
@@ -213,17 +210,6 @@ The prompt asks for five meals, although the output schema does not enforce an e
 - **Database connection fails:** check `docker compose ps` and ensure `DATABASE_URL` uses host port `55432` and the Compose credentials.
 - **Tables are missing or the contract does not match:** regenerate the contract, initialize a fresh database or update an existing one, then run `pnpm exec prisma db verify`.
 - **Redis connection fails:** ensure Redis is running on host port `6380`, matching `src/worker/config.ts`.
-- **Jobs remain `PENDING`:** check that the worker is running and inspect its terminal output. AI or persistence failures do not currently update the database status to `FAILED`.
+- **Jobs remain `PENDING`:** check that the worker is running and inspect its terminal output. The worker publishes pending outbox messages every five seconds.
+- **Jobs become `FAILED`:** inspect the worker output and BullMQ's retained failed job. Failed AI or persistence work is retried up to three times.
 - **The provider rejects the request:** check the API key, optional base URL, and model ID in `src/llm/models.ts`.
-
-## Classroom exercises
-
-1. Start only the API, submit a job, and observe its `PENDING` status. Start the worker and explain why the original HTTP request does not need to remain open.
-2. Test missing, empty, and overlong diet and budget inputs.
-3. Add `PROCESSING` and `FAILED` states, plus a status endpoint that distinguishes a missing job from one still running.
-4. Configure retries and backoff. Make result writes idempotent so a retry cannot create duplicate suggestions.
-5. Add a database relation between jobs and results, and save results plus the completion status in a transaction.
-6. Consider what happens if the database insert succeeds but enqueueing fails. Explore an outbox approach for reliable submission.
-7. Add pagination, authentication, and tests before expanding the demo into a deployed application.
-
-This teaching app focuses on the core workflow. It currently has no authentication, explicit retry policy, or transaction spanning result creation and status updates.

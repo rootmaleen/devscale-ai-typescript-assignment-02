@@ -1,8 +1,13 @@
 import { OpenAIClient } from "@anvia/openai";
 import "dotenv/config";
 
+const apiKey = process.env.OPENAI_API_KEY;
+if (!apiKey) {
+  throw new Error("OPENAI_API_KEY environment variable is not set");
+}
+
 export const client = new OpenAIClient({
-  apiKey: process.env.OPENAI_API_KEY || "",
+  apiKey,
   baseUrl: process.env.OPENAI_BASE_URL,
 });
 
