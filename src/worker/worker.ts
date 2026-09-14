@@ -4,10 +4,26 @@ import { db } from "../utils/db";
 import { generateMealPlan } from "../modules/job/service";
 import { publishOutboxMessages } from "./outbox";
 
+// Prevent scheduled outbox publishing runs from overlapping.
+let publishingOutbox = false;
+
+async function publishOutboxSafely() {
+  if (publishingOutbox) return;
+
+  publishingOutbox = true;
+  try {
+    await publishOutboxMessages();
+  } catch (error) {
+    console.error("Outbox publisher failed:", error);
+  } finally {
+    publishingOutbox = false;
+  }
+}
+
 // Publish pending outbox messages now and retry every five seconds.
-void publishOutboxMessages();
+void publishOutboxSafely();
 setInterval(() => {
-  void publishOutboxMessages();
+  void publishOutboxSafely();
 }, 5000);
 
 export const worker = new Worker(
