@@ -24,7 +24,17 @@ export const jobRouter = new Hono()
       : null;
 
     return c.json({ jobId: id, status: job.status, mealPlan });
-  }).post("/", zValidator("json", CreateJobSchema), async (c) => {
+  }).post("/", zValidator("json", CreateJobSchema, (result, c) => {
+    if (!result.success) {
+      return c.json({
+        message: "Invalid job data",
+        errors: result.error.issues.map((issue) => ({
+          path: issue.path,
+          message: issue.message,
+        })),
+      }, 400);
+    }
+  }), async (c) => {
     const body = c.req.valid("json");
     const newJob = await db.orm.public.Job.create({
       diet: body.diet,
