@@ -34,6 +34,10 @@ export const worker = new Worker(
         jobId: jobData.id,
         ...meal
       }));
+
+      await db.orm.public.JobResult
+        .where((result) => result.jobId.eq(jobId))
+        .delete();
       await db.orm.public.JobResult.createAll(mealsWithId);
       await db.orm.public.Job.where((job) => job.id.eq(jobId)).update({
         status: "COMPLETED",
