@@ -1,6 +1,6 @@
 model Job {
   id String @id @default(uuid())
-  destination String
+  diet String
   budget String
   status String
   createdAt DateTime @default(now())
@@ -10,6 +10,7 @@ model JobResult {
   id String @id @default(uuid())
   name String
   description String
-  location String
+  ingredients String
+  instructions String
   jobId String 
 }

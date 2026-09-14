@@ -1,8 +1,8 @@
 # Hono + Prisma + BullMQ
 
-A teaching project for the **Devscale AI Product Engineering program**. Build an asynchronous travel recommendation API with Hono, PostgreSQL, Prisma Next, Redis, and BullMQ.
+A teaching project for the **Devscale AI Product Engineering program**. Build an asynchronous meal-planning API with Hono, PostgreSQL, Prisma Next, Redis, and BullMQ.
 
-A client submits a destination and budget. The API saves the request and returns immediately; a separate worker calls an AI model and stores the suggestions for the client to retrieve later.
+A client submits a dietary preference and budget. The API saves the request and returns immediately; a separate worker calls an AI model and stores the meal suggestions for the client to retrieve later.
 
 ## What you will learn
 
@@ -30,7 +30,7 @@ Client                         API                         Worker
   |<-- Saved suggestions -------|                             |
 ```
 
-The queue is named `ai-tenerary-queue`, and each submitted task is named `generate-destination`. The API and worker must use the same queue name and Redis connection.
+The queue is named `ai-tenerary-queue`, and each submitted task is named `generate-meal-plan`. The API and worker must use the same queue name and Redis connection.
 
 ## Stack
 
@@ -134,12 +134,12 @@ The API listens at `http://localhost:3000`. Try `/jobs`; there is no route at `/
 ```bash
 curl -i -X POST http://localhost:3000/jobs \
   -H 'Content-Type: application/json' \
-  -d '{"destination":"Bali, Indonesia","budget":"IDR 2,000,000"}'
+  -d '{"diet":"makanan indonesia untuk bulking","budget":"Rp 300.000 per minggu"}'
 ```
 
-A successful request returns **202 Accepted** with a `job` object containing `id`, `destination`, `budget`, `status: "PENDING"`, and `createdAt`. Copy the job ID for the next request.
+A successful request returns **202 Accepted** with a `job` object containing `id`, `diet`, `budget`, `status: "PENDING"`, and `createdAt`. Copy the job ID for the next request.
 
-Both input fields must be strings of at most 255 characters. Include a currency in the budget for a clearer AI prompt. Invalid bodies return a validation error. Empty strings currently pass HTTP validation but are rejected by the worker.
+Both input fields must be non-empty strings of at most 255 characters. Include a currency or time period in the budget for a clearer AI prompt. Invalid bodies return a validation error.
 
 ### List jobs and check status
 
@@ -160,19 +160,21 @@ Response shape:
 ```json
 {
   "jobId": "YOUR_JOB_ID",
-  "destinationList": [
+  "status": "COMPLETED",
+  "mealPlan": [
     {
       "id": "RESULT_ID",
-      "name": "Example destination",
-      "description": "An AI-generated description",
-      "location": "Bali, Indonesia",
+      "name": "Chickpea Curry",
+      "description": "A protein-rich vegetarian curry.",
+      "ingredients": "Chickpeas, tomatoes, onion, garlic, curry powder",
+      "instructions": "Saute the onion and garlic, add the remaining ingredients, and simmer for 20 minutes.",
       "jobId": "YOUR_JOB_ID"
     }
   ]
 }
 ```
 
-The prompt asks for two suggestions, although the output schema does not enforce an exact count. The endpoint returns an empty `destinationList` when no results exist yet, including for an unknown job ID. It does not return job status; use `GET /jobs` to inspect status.
+The prompt asks for five meals, although the output schema does not enforce an exact count. The endpoint returns `mealPlan: null` while a job is still `PENDING` or has `FAILED`. Once the job is `COMPLETED`, `mealPlan` contains the saved meals. Unknown job IDs return `404`.
 
 ## Code walkthrough
 
@@ -189,7 +191,7 @@ The prompt asks for two suggestions, although the output schema does not enforce
 | [`src/utils/db.ts`](src/utils/db.ts) | Database client used by the application |
 | [`prisma/schema.prisma`](prisma/schema.prisma) | `Job` and `JobResult` models |
 
-`Job` stores the request and its status. `JobResult` stores each suggestion with a `jobId` string. The schema does not currently declare a relation or foreign key between these models.
+`Job` stores the diet, budget, and status. `JobResult` stores each meal with a `jobId` string. The schema does not currently declare a relation or foreign key between these models.
 
 ## Commands
 
@@ -217,7 +219,7 @@ The prompt asks for two suggestions, although the output schema does not enforce
 ## Classroom exercises
 
 1. Start only the API, submit a job, and observe its `PENDING` status. Start the worker and explain why the original HTTP request does not need to remain open.
-2. Require non-empty destination and budget values, then test missing, empty, and overlong inputs.
+2. Test missing, empty, and overlong diet and budget inputs.
 3. Add `PROCESSING` and `FAILED` states, plus a status endpoint that distinguishes a missing job from one still running.
 4. Configure retries and backoff. Make result writes idempotent so a retry cannot create duplicate suggestions.
 5. Add a database relation between jobs and results, and save results plus the completion status in a transaction.

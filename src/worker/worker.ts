@@ -1,7 +1,7 @@
 import { Worker } from "bullmq";
 import { QUEUE_NAME, workerConnection } from "./config";
 import { db } from "../utils/db";
-import { generateDestinationList } from "../modules/job/service";
+import { generateMealPlan } from "../modules/job/service";
 
 export const worker = new Worker(
   QUEUE_NAME,
@@ -16,24 +16,31 @@ export const worker = new Worker(
     const jobData = await db.orm.public.Job.where((job) => job.id.eq(jobId)).first();
     console.log(`Fetched job data for ID ${jobId}:`, jobData);
 
-    if (!jobData?.destination || !jobData?.budget) {
-      throw new Error(`Job with ID ${jobId} has invalid data`);
+    try {
+      if (!jobData?.diet || !jobData?.budget) {
+        throw new Error(`Job with ID ${jobId} has invalid data`);
+      }
+
+      const mealPlan = await generateMealPlan(jobData.diet, jobData.budget);
+
+      console.log("Meal plan has been generated successfully");
+      console.log(mealPlan);
+
+      const mealsWithId = mealPlan.meals.map((meal) => ({
+        jobId: jobData.id,
+        ...meal
+      }));
+      await db.orm.public.JobResult.createAll(mealsWithId);
+      await db.orm.public.Job.where((job) => job.id.eq(jobId)).update({
+        status: "COMPLETED",
+      });
+    } catch (error) {
+      await db.orm.public.Job.where((job) => job.id.eq(jobId)).update({
+        status: "FAILED",
+      });
+
+      throw error;
     }
-
-    const destinationList = await generateDestinationList(jobData.destination, jobData.budget);
-
-    //save to DB
-    console.log("Destination has been generated successfully");
-    console.log(destinationList);
-
-    const destinationListWithId = destinationList.destinations.map((destination) => ({
-      jobId: jobData.id,
-      ...destination
-    }));
-    await db.orm.public.JobResult.createAll(destinationListWithId);
-    await db.orm.public.Job.where((job) => job.id.eq(jobId)).update({
-      status: "COMPLETED",
-    });
   }, {
   connection: workerConnection,
 });

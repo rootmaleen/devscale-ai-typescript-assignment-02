@@ -2,31 +2,32 @@ import z from "zod";
 import { generateCompletion } from "@anvia/core";
 import { getModel } from "../../llm/models";
 
-const DestinationSchema = z.object({
+const MealSchema = z.object({
   name: z.string(),
   description: z.string(),
-  location: z.string(),
+  ingredients: z.string(),
+  instructions: z.string(),
 });
 
-const DestinationListSchema = z.object({
-  destinations: z.array(DestinationSchema),
+const MealPlanSchema = z.object({
+  meals: z.array(MealSchema),
 });
 
-const SYSTEM_INSTRUCTIONS = `You are a travel expert. You will be given a prompt to generate a list of travel destinations. The output should be in JSON format, following the schema provided. Each destination should have a name, description, and location.`;
+const SYSTEM_INSTRUCTIONS = `You are a meal-planning expert. You will be given a prompt to generate a list of meals. The output should be in JSON format, following the schema provided. Each meal should have a name, description, ingredients, and instructions.`;
 
-export async function generateDestinationList(destination: string, budget: string) {
-  console.log(`Generating destination list for destination: ${destination} and budget: ${budget}`);
+export async function generateMealPlan(diet: string, budget: string) {
+  console.log(`Generating meal plan for diet: ${diet} and budget: ${budget}`);
 
-  const PROMPT = `Generate a list of 2 travel destinations with name, description, and location in JSON format. The destinations should be related to ${destination} and within the budget of ${budget}.`;
+  const PROMPT = `Generate a list of 5 meals with name, description, ingredients, and instructions in JSON format. The meals should match the diet of ${diet} and stay within the budget of ${budget}.`;
 
   const res = await generateCompletion({
     model: getModel(),
     prompt: PROMPT,
     instructions: SYSTEM_INSTRUCTIONS,
-    outputSchema: DestinationListSchema,
+    outputSchema: MealPlanSchema,
   })
 
-  console.log("Generating done!")
+  console.log("Meal plan generation done!")
 
   return res.output;
 }

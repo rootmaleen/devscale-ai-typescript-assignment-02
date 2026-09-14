@@ -14,18 +14,24 @@ export const jobRouter = new Hono()
   }).get("/:id", async (c) => {
     const { id } = c.req.param();
 
-    //filter job result yg id = jobId
-    const destinationList = await db.orm.public.JobResult.where((jobResult) => jobResult.jobId.eq(id)).all();
+    const job = await db.orm.public.Job.where((job) => job.id.eq(id)).first();
+    if (!job) {
+      return c.json({ message: "Job not found" }, 404);
+    }
 
-    return c.json({ jobId: id, destinationList });
+    const mealPlan = job.status === "COMPLETED"
+      ? await db.orm.public.JobResult.where((jobResult) => jobResult.jobId.eq(id)).all()
+      : null;
+
+    return c.json({ jobId: id, status: job.status, mealPlan });
   }).post("/", zValidator("json", CreateJobSchema), async (c) => {
     const body = c.req.valid("json");
     const newJob = await db.orm.public.Job.create({
-      destination: body.destination,
+      diet: body.diet,
       budget: body.budget,
       status: "PENDING"
     })
 
-    await queue.add("generate-destination-list", newJob);
+    await queue.add("generate-meal-plan", newJob);
     return c.json({ job: newJob }, 202);
   })
