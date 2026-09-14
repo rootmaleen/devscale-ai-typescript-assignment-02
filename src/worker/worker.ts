@@ -21,6 +21,10 @@ export const worker = new Worker(
         throw new Error(`Job with ID ${jobId} has invalid data`);
       }
 
+      await db.orm.public.Job.where((job) => job.id.eq(jobId)).update({
+        status: "PROCESSING",
+      });
+
       const mealPlan = await generateMealPlan(jobData.diet, jobData.budget);
 
       console.log("Meal plan has been generated successfully");
